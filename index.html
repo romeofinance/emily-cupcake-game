@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Emily's Runaway Cupcake Birthday Game</title>
+  <style>
+    :root { --pink:#ff72b6; --purple:#8b6cff; --blue:#69d8ff; --cream:#fff4cf; --ink:#42304e; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; min-height: 100dvh; display: grid; place-items: center;
+      font-family: "Comic Sans MS", "Trebuchet MS", system-ui, sans-serif;
+      color: var(--ink); overflow: hidden;
+      overscroll-behavior: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+      background: radial-gradient(circle at top left, #fff7c2 0, #ffe0f2 34%, #dff8ff 70%, #e8ddff 100%);
+    }
+    .wrap { width: min(980px, calc(100vw - 16px)); padding: 8px; }
+    .card { background: rgba(255,255,255,.78); border: 5px solid white; border-radius: 28px; box-shadow: 0 18px 50px rgba(105,70,120,.22); overflow: hidden; }
+    header { padding: 10px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+    h1 { font-size: clamp(22px,3.7vw,40px); margin:0; color:#ff4fa8; text-shadow: 2px 2px 0 #fff; }
+    .pill { background:#fff; border:3px solid #ffd86a; border-radius:999px; padding:7px 12px; font-weight:700; }
+    canvas { width: min(100%, calc((100vh - 305px) * 16 / 9)); height:auto; margin:0 auto; display:block; background:#fff; touch-action:none; }
+    .controls { display:flex; justify-content:center; align-items:center; gap:10px 18px; padding:9px 10px; flex-wrap:wrap; }
+    button { border:0; border-radius:18px; padding:10px 16px; font-weight:900; font-size:17px; color:white; background:linear-gradient(135deg,var(--pink),var(--purple)); box-shadow:0 7px 0 #6f4ad4; cursor:pointer; }
+    #action { order:1; font-size:21px; padding:12px 26px; border-radius:22px; }
+    button:active { transform: translateY(4px); box-shadow:0 3px 0 #6f4ad4; }
+    .dpad { order:2; display:grid; grid-template-columns:46px 46px 46px; grid-template-rows:38px 38px; gap:5px; }
+    body.decorating .dpad { display:none; }
+    .dpad button { padding:0; font-size:23px; border-radius:16px; }
+    .dpad .up { grid-column:2; } .dpad .left { grid-column:1; grid-row:2; } .dpad .down { grid-column:2; grid-row:2; } .dpad .right { grid-column:3; grid-row:2; }
+    .hint { flex:1 1 100%; font-size:16px; font-weight:700; max-width:760px; text-align:center; }
+    footer { padding:0 16px 10px; color:#6a5574; font-size:14px; }
+    @media (max-height: 760px) { footer { display:none; } }
+    @media (pointer: coarse), (max-width: 760px) {
+      body { align-items:start; }
+      .wrap { width:100vw; padding:4px; }
+      .card { border-width:3px; border-radius:18px; }
+      header { padding:7px 10px; gap:6px; }
+      h1 { font-size: clamp(18px,5vw,28px); }
+      .pill { font-size:14px; padding:5px 9px; }
+      canvas { width: min(100%, calc((100dvh - 235px) * 16 / 9)); }
+      .controls { padding:7px; gap:8px 14px; }
+      .hint { font-size:14px; line-height:1.18; }
+      #action { font-size:19px; padding:11px 22px; }
+      .dpad { grid-template-columns:64px 64px 64px; grid-template-rows:54px 54px; gap:8px; }
+      .dpad button { font-size:30px; border-radius:18px; }
+      footer { display:none; }
+    }
+    @media (pointer: coarse) and (orientation: portrait) {
+      canvas { width: min(100%, calc((100dvh - 250px) * 16 / 9)); }
+      .hint::after { content:' Turn sideways if you want a bigger play area.'; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <header>
+        <h1>🧁 Emily’s Runaway Birthday Cupcake</h1>
+        <div class="pill" id="status">Collect the ingredients!</div>
+      </header>
+      <canvas id="game" width="960" height="540" aria-label="Emily's cupcake maze game"></canvas>
+      <audio id="music" src="assets/music.mp3" loop preload="auto"></audio>
+      <div class="controls">
+        <div class="hint" id="hint">Use arrow keys or the buttons. This game is gentle: bumps just bounce you back.</div>
+        <div class="dpad" aria-label="Touch controls">
+          <button class="up" data-key="ArrowUp">▲</button>
+          <button class="left" data-key="ArrowLeft">◀</button>
+          <button class="down" data-key="ArrowDown">▼</button>
+          <button class="right" data-key="ArrowRight">▶</button>
+        </div>
+        <button id="action">Start!</button>
+      </div>
+      <footer>Made by Romeo for Emily. Sparkles are mandatory. Difficulty: cupcake-friendly.</footer>
+    </div>
+  </div>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const statusEl = document.getElementById('status');
+const hintEl = document.getElementById('hint');
+const actionBtn = document.getElementById('action');
+const music = document.getElementById('music');
+const banner = new Image(); banner.src = 'assets/banner.jpg';
+const escapeBg = new Image(); escapeBg.src = 'assets/escape-bg.jpg';
+const giantCutscene = new Image(); giantCutscene.src = 'assets/giant-cutscene.png';
+const decorateBg = new Image(); decorateBg.src = 'assets/decorate-bg.jpg';
+
+let keys = {}, scene = 'title', t = 0, collected = 0, confetti = [], levelStart = 0, loopStarted = false, cutsceneStart = 0, cutsceneAuto = false;
+let player = {x:90,y:450,r:24,speed:3.2, sparkle:0};
+const ingredientsBase = [
+  {name:'Sprinkles', emoji:'🌈', color:'#ff77cc', x:740,y:92},
+  {name:'Candle', emoji:'🕯️', color:'#ffe066', x:830,y:420},
+  {name:'Sparkler', emoji:'✨', color:'#8ee8ff', x:130,y:88},
+  {name:'Birthday Sign', emoji:'🎉', color:'#b399ff', x:475,y:280},
+  {name:'Frosting', emoji:'🍓', color:'#ff9bcf', x:755,y:285}
+];
+let ingredients = [];
+let obstacles = [];
+let decorations = [], selectedDecoration = 0;
+const decorationTools = [
+  {name:'Sprinkles', emoji:'🌈', size:34},
+  {name:'Candle', emoji:'🕯️', size:42},
+  {name:'Sparkler', emoji:'✨', size:42},
+  {name:'Gold Sign', emoji:'HB', size:42, type:'goldSign'},
+  {name:'Frosting', emoji:'🍓', size:40},
+  {name:'Cherry', emoji:'🍒', size:36},
+  {name:'Stars', emoji:'⭐', size:34},
+  {name:'Party Popper', emoji:'🎉', size:38}
+];
+
+function resetLevel1(){
+  scene='maze'; collected=0; levelStart=t; player={x:80,y:455,r:24,speed:3.2,sparkle:0};
+  ingredients = ingredientsBase.map((p,i)=>({...p, got:false, vx:Math.cos(i)*0.55, vy:Math.sin(i*2)*0.55}));
+  statusEl.textContent='Ingredients: 0 / 5';
+  hintEl.textContent='Catch each runaway ingredient. Find the easy openings in the maze!';
+  actionBtn.textContent='Restart Level';
+}
+function startMusic(){ music.volume = 0.35; music.play().catch(()=>{}); }
+function startGiantCutscene(){
+  scene='giant'; cutsceneStart=t; cutsceneAuto=false;
+  statusEl.textContent='Oh no! A silly giant ate the cupcake!';
+  hintEl.textContent='Next: escape the toilet-slide obstacle course after the giant poops out the cupcake.';
+  actionBtn.textContent='Start Escape!';
+}
+function resetLevel2(){
+  scene='escape'; levelStart=t; player={x:70,y:405,r:23,speed:3.4,sparkle:0};
+  obstacles = [
+    {x:250,y:420,w:48,h:48, emoji:'🥦', amp:18, spd:34},
+    {x:410,y:340,w:46,h:46, emoji:'🫧', amp:20, spd:42},
+    {x:575,y:455,w:48,h:48, emoji:'🥦', amp:18, spd:36},
+    {x:735,y:355,w:46,h:46, emoji:'🫧', amp:20, spd:44}
+  ];
+  statusEl.textContent='Escape the silly toilet slide!';
+  hintEl.textContent='Obstacle course! The lane is wider now. Dodge the spaced-out bubbles and broccoli.';
+  actionBtn.textContent='Restart Level';
+}
+function resetDecorate(){
+  scene='decorate'; decorations=[]; selectedDecoration=0;
+  statusEl.textContent='Part 3: Decorate the cupcake!';
+  hintEl.textContent='Pick a decoration on the left, then click anywhere on the big cupcake to place it.';
+  actionBtn.textContent='Finish Cupcake!';
+}
+function win(){
+  scene='win'; statusEl.textContent='You win! Happy Birthday!';
+  hintEl.textContent='Emily decorated the cupcake beautifully. Excellent cupcake work.';
+  confetti = Array.from({length:120},()=>({x:Math.random()*960,y:-Math.random()*540,v:1+Math.random()*4,c:['#ff5bbd','#68d8ff','#ffe15b','#8d6cff','#7bf29b'][Math.floor(Math.random()*5)]}));
+}
+
+actionBtn.onclick = () => {
+  startMusic();
+  if(scene==='title'||scene==='win') resetLevel1();
+  else if(scene==='giant') resetLevel2();
+  else if(scene==='escape') resetLevel2();
+  else if(scene==='decorate') win();
+  else resetLevel1();
+};
+document.addEventListener('keydown', e=>{ keys[e.key]=true; if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault(); });
+document.addEventListener('keyup', e=> keys[e.key]=false);
+document.querySelectorAll('.dpad button').forEach(b=>{
+  const k=b.dataset.key;
+  const on=e=>{e.preventDefault(); keys[k]=true;}; const off=e=>{e.preventDefault(); keys[k]=false;};
+  b.addEventListener('pointerdown',on); b.addEventListener('pointerup',off); b.addEventListener('pointerleave',off); b.addEventListener('pointercancel',off);
+});
+canvas.addEventListener('pointerdown', e=>{
+  if(scene!=='decorate') return;
+  const rect=canvas.getBoundingClientRect();
+  const x=(e.clientX-rect.left)*canvas.width/rect.width, y=(e.clientY-rect.top)*canvas.height/rect.height;
+  const toolIndex=Math.floor((y-105)/50);
+  if(x<238 && toolIndex>=0 && toolIndex<decorationTools.length){ selectedDecoration=toolIndex; return; }
+  const dx=(x-600)/260, dy=(y-325)/170;
+  if(dx*dx+dy*dy<=1.25){
+    decorations.push({tool:selectedDecoration,x,y,rot:(Math.random()-.5)*0.35});
+    statusEl.textContent=`Decorations placed: ${decorations.length}`;
+    if(decorations.length>=5) hintEl.textContent='Beautiful! Add more wherever you want, or press Finish Cupcake.';
+  }
+});
+
+const walls = [
+  {x:185,y:85,w:35,h:365}, {x:185,y:85,w:240,h:35}, {x:300,y:205,w:35,h:245},
+  {x:300,y:205,w:260,h:35}, {x:525,y:205,w:35,h:210}, {x:410,y:380,w:150,h:35},
+  {x:655,y:85,w:35,h:365}, {x:520,y:85,w:170,h:35}, {x:655,y:270,w:165,h:35}
+];
+function collideRectCircle(r,c){
+  const nx=Math.max(r.x, Math.min(c.x, r.x+r.w)), ny=Math.max(r.y, Math.min(c.y, r.y+r.h));
+  return (c.x-nx)**2+(c.y-ny)**2 < c.r**2;
+}
+function movePlayer(){
+  let dx=(keys.ArrowRight?1:0)-(keys.ArrowLeft?1:0), dy=(keys.ArrowDown?1:0)-(keys.ArrowUp?1:0);
+  if(dx||dy){ const len=Math.hypot(dx,dy); dx/=len; dy/=len; }
+  const old={x:player.x,y:player.y}; player.x += dx*player.speed; player.y += dy*player.speed;
+  player.x=Math.max(player.r,Math.min(960-player.r,player.x));
+  if(scene==='escape') player.y=Math.max(290,Math.min(500,player.y));
+  else player.y=Math.max(player.r,Math.min(540-player.r,player.y));
+  if(scene==='maze' && walls.some(w=>collideRectCircle(w,player))){ player.x=old.x; player.y=old.y; player.sparkle=16; }
+}
+function drawCupcake(x,y,scale=1){
+  ctx.save(); ctx.translate(x,y); ctx.scale(scale,scale);
+  // Wrapper
+  const wrapper=ctx.createLinearGradient(0,8,0,42);
+  wrapper.addColorStop(0,'#d2a0ff'); wrapper.addColorStop(1,'#9f63df');
+  ctx.fillStyle=wrapper; ctx.beginPath(); ctx.roundRect(-27,2,54,38,10); ctx.fill();
+  ctx.strokeStyle='#7a3b8d'; ctx.lineWidth=2; ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.lineWidth=2;
+  [-14,0,14].forEach(px=>{ ctx.beginPath(); ctx.moveTo(px,7); ctx.lineTo(px*0.65,37); ctx.stroke(); });
+
+  // Cake body that connects frosting to wrapper (removes the old visual gap)
+  ctx.fillStyle='#ffd591'; ctx.beginPath(); ctx.roundRect(-25,-11,50,23,9); ctx.fill();
+  ctx.fillStyle='#f5b86a'; ctx.fillRect(-24,4,48,8);
+
+  // Frosting dome and swirls
+  const frosting=ctx.createLinearGradient(0,-42,0,8);
+  frosting.addColorStop(0,'#fff6cf'); frosting.addColorStop(.45,'#ffb6db'); frosting.addColorStop(1,'#ff82c1');
+  ctx.fillStyle=frosting; ctx.beginPath();
+  ctx.moveTo(-33,4);
+  ctx.bezierCurveTo(-29,-18,-18,-28,-2,-29);
+  ctx.bezierCurveTo(5,-43,30,-31,31,-7);
+  ctx.bezierCurveTo(25,8,-18,12,-33,4);
+  ctx.fill();
+  ctx.strokeStyle='rgba(160,70,120,.35)'; ctx.lineWidth=2; ctx.stroke();
+  ctx.fillStyle='#fff7d6'; ctx.beginPath(); ctx.arc(-13,-20,7,0,7); ctx.arc(8,-24,6,0,7); ctx.arc(19,-11,5,0,7); ctx.fill();
+  [['#ff5bbd',-18,-9],['#68d8ff',2,-17],['#ffe15b',16,-5],['#7bf29b',-2,-4]].forEach(s=>{ ctx.fillStyle=s[0]; ctx.beginPath(); ctx.arc(s[1],s[2],2.2,0,7); ctx.fill(); });
+
+  // Candle and flame
+  ctx.fillStyle='#ffd54f'; ctx.fillRect(-4,-58,8,30); ctx.strokeStyle='#ff8fb8'; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(-3,-52); ctx.lineTo(4,-46); ctx.moveTo(-4,-42); ctx.lineTo(4,-36); ctx.stroke();
+  ctx.fillStyle='#ff7043'; ctx.beginPath(); ctx.moveTo(0,-71); ctx.quadraticCurveTo(13,-55,1,-49); ctx.quadraticCurveTo(-11,-56,0,-71); ctx.fill();
+  ctx.fillStyle='#ffe66d'; ctx.beginPath(); ctx.moveTo(1,-64); ctx.quadraticCurveTo(6,-56,1,-53); ctx.quadraticCurveTo(-4,-57,1,-64); ctx.fill();
+
+  // Face
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(-10,-6,4,0,7); ctx.arc(11,-6,4,0,7); ctx.fill();
+  ctx.fillStyle='#333'; ctx.beginPath(); ctx.arc(-9,-5,2,0,7); ctx.arc(12,-5,2,0,7); ctx.fill();
+  ctx.strokeStyle='#7a3b5d'; ctx.lineWidth=3; ctx.beginPath(); ctx.arc(1,4,8,0.15,Math.PI-0.15); ctx.stroke();
+  ctx.restore();
+}
+function drawIngredient(it){
+  ctx.save(); ctx.translate(it.x,it.y);
+  ctx.fillStyle=it.color; ctx.beginPath(); ctx.arc(0,0,27+Math.sin(t/18)*3,0,7); ctx.fill();
+  ctx.font='31px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(it.emoji,0,1);
+  ctx.restore();
+}
+function drawMaze(){
+  ctx.fillStyle='#fff8df'; ctx.fillRect(0,0,960,540);
+  ctx.drawImage(banner,0,0,960,540); ctx.fillStyle='rgba(255,255,255,.38)'; ctx.fillRect(0,0,960,540);
+  ctx.fillStyle='#9be7ff'; ctx.strokeStyle='#fff'; ctx.lineWidth=5;
+  walls.forEach(w=>{ ctx.beginPath(); ctx.roundRect(w.x,w.y,w.w,w.h,15); ctx.fill(); ctx.stroke(); });
+  ctx.fillStyle='rgba(255,255,255,.78)'; ctx.beginPath(); ctx.roundRect(18,18,445,60,18); ctx.fill();
+  ctx.fillStyle='#62385f'; ctx.font='bold 25px Comic Sans MS'; ctx.textAlign='left'; ctx.textBaseline='alphabetic'; ctx.fillText('Catch the runaway birthday ingredients!',36,56);
+  ingredients.forEach(it=>!it.got && drawIngredient(it));
+  drawCupcake(player.x,player.y,1);
+  if(player.sparkle>0){ ctx.font='32px serif'; ctx.fillText('✨',player.x+26,player.y-24); player.sparkle--; }
+}
+function updateMaze(){
+  movePlayer();
+  ingredients.forEach(it=>{
+    if(it.got) return;
+    const awayX=it.x-player.x, awayY=it.y-player.y, d=Math.hypot(awayX,awayY)||1;
+    const helperMode = t - levelStart > 1500; // after ~25 seconds, make catching easier
+    if(d<115 && !helperMode){ it.x += awayX/d*0.25; it.y += awayY/d*0.25; }
+    if(helperMode && d<280){ it.x -= awayX/d*0.42; it.y -= awayY/d*0.42; }
+    it.x += Math.sin(t/34+it.y)*0.38; it.y += Math.cos(t/40+it.x)*0.32;
+    it.x=Math.max(35,Math.min(925,it.x)); it.y=Math.max(45,Math.min(500,it.y));
+    if(Math.hypot(it.x-player.x,it.y-player.y)<64){ it.got=true; collected++; player.sparkle=25; statusEl.textContent=`Ingredients: ${collected} / 5`; }
+  });
+  if(collected===ingredients.length && scene==='maze') startGiantCutscene();
+}
+function drawEscape(){
+  ctx.drawImage(escapeBg,0,0,960,540); ctx.fillStyle='rgba(255,255,255,.18)'; ctx.fillRect(0,0,960,540);
+  ctx.fillStyle='rgba(80,190,240,.22)'; ctx.fillRect(0,0,960,270);
+  ctx.fillStyle='rgba(119,221,255,.78)'; ctx.beginPath(); ctx.roundRect(35,285,850,225,55); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.95)'; ctx.lineWidth=5; ctx.stroke();
+  ctx.fillStyle='#fff'; ctx.font='bold 25px Comic Sans MS'; ctx.fillText('Stay in the toilet-slide lane and dodge the obstacles! 🚽',38,50);
+  obstacles.forEach((o,i)=>{ const oy=o.y + Math.sin(t/o.spd+i)*o.amp; ctx.fillStyle='rgba(255,255,255,.82)'; ctx.beginPath(); ctx.arc(o.x+o.w/2,oy+o.h/2,30,0,7); ctx.fill(); ctx.font='30px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(o.emoji,o.x+o.w/2,oy+o.h/2); o.drawY=oy; });
+  ctx.fillStyle='#baffc9'; ctx.beginPath(); ctx.roundRect(875,340,55,135,20); ctx.fill(); ctx.font='42px serif'; ctx.fillText('🚽',903,408);
+  drawCupcake(player.x,player.y,1);
+}
+function updateEscape(){
+  movePlayer();
+  obstacles.forEach(o=>{ const test={...o, y:o.drawY ?? o.y}; if(collideRectCircle(test,player)){ player.x=70; player.y=405; player.sparkle=24; }});
+  if(player.x>875 && player.y>330) resetDecorate();
+}
+function drawDecorate(){
+  actionBtn.textContent='Finish Cupcake!';
+  if(statusEl.textContent==='Collect the ingredients!') statusEl.textContent='Part 3: Decorate the cupcake!';
+  if(!hintEl.textContent.includes('Pick a decoration')) hintEl.textContent='Pick a decoration, then click/tap the cupcake to place it.';
+  ctx.drawImage(decorateBg,0,0,960,540); ctx.fillStyle='rgba(255,255,255,.20)'; ctx.fillRect(0,0,960,540);
+  ctx.fillStyle='rgba(255,255,255,.86)'; ctx.beginPath(); ctx.roundRect(18,62,220,430,24); ctx.fill();
+  ctx.fillStyle='#ff4fa8'; ctx.font='bold 24px Comic Sans MS'; ctx.textAlign='center'; ctx.fillText('Pick one!',128,92);
+  decorationTools.forEach((d,i)=>{
+    const y=132+i*50;
+    ctx.fillStyle=i===selectedDecoration?'#fff0a8':'rgba(255,255,255,.95)'; ctx.beginPath(); ctx.roundRect(32,y-27,188,43,15); ctx.fill();
+    ctx.strokeStyle=i===selectedDecoration?'#ff72b6':'#ffd86a'; ctx.lineWidth=3; ctx.stroke();
+    if(d.type==='goldSign'){
+      const miniGold=ctx.createLinearGradient(0,y-22,0,y+14);
+      miniGold.addColorStop(0,'#fff2a8'); miniGold.addColorStop(.55,'#ffd84d'); miniGold.addColorStop(1,'#c99000');
+      ctx.fillStyle=miniGold; ctx.beginPath(); ctx.roundRect(47,y-22,146,34,10); ctx.fill();
+      ctx.strokeStyle='#8a5a00'; ctx.lineWidth=2; ctx.stroke();
+      ctx.fillStyle='#7a4a00'; ctx.font='bold 15px Comic Sans MS'; ctx.fillText('Happy Birthday!',120,y-4);
+    } else {
+      ctx.font='30px serif'; ctx.fillText(d.emoji,64,y-5);
+      ctx.fillStyle='#5d4b6b'; ctx.font='bold 15px Comic Sans MS'; ctx.fillText(d.name,160,y-4);
+    }
+  });
+  ctx.fillStyle='rgba(255,255,255,.66)'; ctx.beginPath(); ctx.roundRect(250,68,675,420,34); ctx.fill();
+  ctx.fillStyle='#62385f'; ctx.font='bold 30px Comic Sans MS'; ctx.textAlign='center'; ctx.fillText('Decorate the birthday cupcake!',590,112);
+  drawBigCupcake(600,350,2.55);
+  decorations.forEach(p=>{ const d=decorationTools[p.tool]; ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); if(d.type==='goldSign') drawGoldBirthdaySign(0,0,1.65); else { ctx.font=d.size+'px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(d.emoji,0,0); } ctx.restore(); });
+  ctx.fillStyle='rgba(255,255,255,.90)'; ctx.beginPath(); ctx.roundRect(292,486,596,38,18); ctx.fill();
+  ctx.fillStyle='#5d4b6b'; ctx.font='bold 19px Comic Sans MS'; ctx.fillText('Click/tap anywhere on the cupcake to place decorations.',590,512);
+}
+function drawGoldBirthdaySign(x,y,scale=1){
+  ctx.save(); ctx.translate(x,y); ctx.scale(scale,scale);
+  const gold=ctx.createLinearGradient(0,-28,0,24);
+  gold.addColorStop(0,'#fff2a8'); gold.addColorStop(.45,'#ffd84d'); gold.addColorStop(1,'#c99000');
+  ctx.fillStyle=gold; ctx.beginPath(); ctx.roundRect(-58,-26,116,52,12); ctx.fill();
+  ctx.strokeStyle='#8a5a00'; ctx.lineWidth=4; ctx.stroke();
+  ctx.fillStyle='#7a4a00'; ctx.font='bold 18px Comic Sans MS'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('Happy',0,-7); ctx.fillText('Birthday!',0,13);
+  ctx.fillStyle='rgba(255,255,255,.55)'; ctx.beginPath(); ctx.roundRect(-46,-20,92,8,4); ctx.fill();
+  ctx.restore();
+}
+function drawBigCupcake(x,y,scale){
+  ctx.save(); ctx.translate(x,y); ctx.scale(scale,scale);
+  ctx.fillStyle='rgba(255,255,255,.38)'; ctx.beginPath(); ctx.ellipse(0,35,88,52,0,0,7); ctx.fill();
+  ctx.fillStyle='#ffd18a'; ctx.beginPath(); ctx.roundRect(-62,-12,124,38,16); ctx.fill();
+  ctx.strokeStyle='#c47b45'; ctx.lineWidth=3; ctx.stroke();
+  const wrap=ctx.createLinearGradient(0,18,0,88); wrap.addColorStop(0,'#d7a2ff'); wrap.addColorStop(1,'#8d54d8');
+  ctx.fillStyle=wrap; ctx.beginPath(); ctx.roundRect(-70,18,140,82,18); ctx.fill();
+  ctx.strokeStyle='#6e3aa8'; ctx.lineWidth=3; ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.lineWidth=3; [-42,-20,0,20,42].forEach(px=>{ ctx.beginPath(); ctx.moveTo(px,25); ctx.lineTo(px*.65,92); ctx.stroke(); });
+  const frost=ctx.createLinearGradient(0,-92,0,16); frost.addColorStop(0,'#fff8d8'); frost.addColorStop(.45,'#ffc0df'); frost.addColorStop(1,'#ff77ba');
+  ctx.fillStyle=frost; ctx.beginPath();
+  ctx.moveTo(-82,8); ctx.bezierCurveTo(-70,-42,-45,-62,-10,-58); ctx.bezierCurveTo(8,-94,74,-68,78,-10); ctx.bezierCurveTo(64,28,-52,34,-82,8); ctx.fill();
+  ctx.strokeStyle='rgba(122,59,93,.45)'; ctx.lineWidth=3; ctx.stroke();
+  ctx.fillStyle='#fff8d8'; ctx.beginPath(); ctx.arc(-34,-35,18,0,7); ctx.arc(4,-48,20,0,7); ctx.arc(42,-30,16,0,7); ctx.fill();
+  [['#ff5bbd',-48,-8],['#68d8ff',-10,-30],['#ffe15b',30,-12],['#7bf29b',8,4],['#8d6cff',51,3]].forEach(s=>{ ctx.fillStyle=s[0]; ctx.beginPath(); ctx.arc(s[1],s[2],4,0,7); ctx.fill(); });
+  ctx.fillStyle='#7a3b5d'; ctx.font='bold 16px Comic Sans MS'; ctx.textAlign='center'; ctx.fillText('decorate here!',0,62);
+  ctx.restore();
+}
+function drawGiantCutscene(){
+  ctx.drawImage(giantCutscene,0,0,960,540); ctx.fillStyle='rgba(255,255,255,.12)'; ctx.fillRect(0,0,960,540);
+  ctx.fillStyle='rgba(255,255,255,.82)'; ctx.beginPath(); ctx.roundRect(100,55,760,170,30); ctx.fill();
+  ctx.fillStyle='#ff4fa8'; ctx.font='bold 40px Comic Sans MS'; ctx.textAlign='center'; ctx.fillText('Uh oh — a silly giant ate the cupcake!',480,120);
+  ctx.fillStyle='#5d4b6b'; ctx.font='bold 26px Comic Sans MS'; ctx.fillText('Now escape the toilet-slide obstacle course',480,172);
+  ctx.font='bold 24px Comic Sans MS'; ctx.fillText('after the giant poops out the cupcake. 🚽✨',480,205);
+  ctx.fillStyle='rgba(255,255,255,.9)'; ctx.beginPath(); ctx.roundRect(300,432,360,64,24); ctx.fill();
+  ctx.fillStyle='#62385f'; ctx.font='bold 24px Comic Sans MS'; ctx.fillText('Starting escape in ' + Math.max(1, Math.ceil((240-(t-cutsceneStart))/60)) + '...',480,472);
+}
+function drawTitle(){
+  ctx.drawImage(banner,0,0,960,540); ctx.fillStyle='rgba(255,255,255,.16)'; ctx.fillRect(0,0,960,540);
+  ctx.fillStyle='rgba(255,255,255,.78)'; ctx.beginPath(); ctx.roundRect(95,72,770,210,30); ctx.fill();
+  ctx.fillStyle='#ff4fa8'; ctx.font='bold 48px Comic Sans MS'; ctx.textAlign='center'; ctx.fillText('Runaway Birthday Cupcake!',480,145);
+  ctx.fillStyle='#5d4b6b'; ctx.font='bold 28px Comic Sans MS'; ctx.fillText('Maze + ingredients + giant escape + toilet slide',480,198);
+  ctx.font='24px Comic Sans MS'; ctx.fillText('Press Start. It is easy on purpose.',480,244);
+  drawCupcake(480,390,1.8);
+  actionBtn.textContent='Start!';
+}
+function drawWin(){
+  ctx.fillStyle='#fff3c4'; ctx.fillRect(0,0,960,540); ctx.drawImage(banner,0,0,960,540); ctx.fillStyle='rgba(255,255,255,.25)'; ctx.fillRect(0,0,960,540);
+  confetti.forEach(p=>{ p.y+=p.v; if(p.y>550){p.y=-10;p.x=Math.random()*960;} ctx.fillStyle=p.c; ctx.fillRect(p.x,p.y,10,16); });
+  ctx.fillStyle='rgba(255,255,255,.9)'; ctx.beginPath(); ctx.roundRect(150,70,660,345,35); ctx.fill();
+  ctx.fillStyle='#ff4fa8'; ctx.font='bold 55px Comic Sans MS'; ctx.textAlign='center'; ctx.fillText('Happy Birthday!',480,155);
+  ctx.fillStyle='#5d4b6b'; ctx.font='bold 30px Comic Sans MS'; ctx.fillText('You caught every ingredient and escaped!',480,220);
+  drawCupcake(480,335,1.7); ctx.font='46px serif'; ctx.fillText('✨ 🎉 🌈',480,455); actionBtn.textContent='Play Again!';
+}
+function loop(){
+  t++;
+  document.body.classList.toggle('decorating', scene==='decorate');
+  if(scene==='title') drawTitle();
+  if(scene==='maze'){ updateMaze(); drawMaze(); }
+  if(scene==='giant'){
+    drawGiantCutscene();
+    if(t-cutsceneStart>240 && !cutsceneAuto){ cutsceneAuto=true; resetLevel2(); }
+  }
+  if(scene==='escape'){ updateEscape(); drawEscape(); }
+  if(scene==='decorate') drawDecorate();
+  if(scene==='win') drawWin();
+  requestAnimationFrame(loop);
+}
+function startLoop(){ if(!loopStarted){ loopStarted = true; loop(); } }
+Promise.all([new Promise(r=>banner.onload=r), new Promise(r=>escapeBg.onload=r), new Promise(r=>giantCutscene.onload=r), new Promise(r=>decorateBg.onload=r)]).then(startLoop);
+setTimeout(startLoop, 800);
+</script>
+</body>
+</html>
